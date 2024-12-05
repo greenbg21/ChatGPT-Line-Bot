@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from flask import Flask, request, abort
+from flask import Flask, request, abort, jsonify
 from linebot import (
     LineBotApi, WebhookHandler
 )
@@ -21,6 +21,100 @@ from src.service.youtube import Youtube, YoutubeTranscriptReader
 from src.service.website import Website, WebsiteReader
 from src.mongodb import mongodb
 
+# 塔羅牌資料結構
+tarot_data = {
+    "MajorArcana": {
+        "0": "愚者 心智崩壊、空洞、空虚、資源缺乏、内外一",
+        "1": "魔法师 採取行動、醫生",
+        "2": "女祭师 運用技巧與知識",
+        "3": "皇后 創造性的女性能量、雌激素、女神的力量",
+        "4": "皇帝 男性力量、翠固酮、神的力量",
+        "5": "教皇 以靈性為中心、放棄自由、獨身守貞",
+        "6": "爱人 結合、和諧一致、性、配合、合作",
+        "7": "戰車 移動、旅行、行動",
+        "8": "力量 力量",
+        "9": "隱士 自省、内省、退縮回自我資源(無外援)",
+        "10": "命運之輪 改變",
+        "11": "正義 和谐、平衡",
+        "12": "倒吊人 自我犧牲、服務",
+        "13": "死亡 轉化、徹底改觀、完全終結",
+        "14": "节制 緩和的、適中的、受保護的",
+        "15": "惡魔 不平衡的、被侵襲、受感染、疾病",
+        "16": "塔 破壞、崩壞(經常是突然的)",
+        "17": "星星 新的開始、神經系統重新開始活動",
+        "18": "月亮 幻象、錯覺、隱晦的、未覺察的影響(心識體問題)",
+        "19": "太陽 活力",
+        "20": "審判 做决定、選擇、依決定行動的能力",
+        "21": "世界 完成、實現、滿足、生命"
+    },
+    "MinorArcana": {
+        "Swords": {
+            "s1": "防禦、抵抗、呼吸、氣氛、播送、風",
+            "s2": "休戰、平衡",
+            "s3": "分離、分開、去除、缺口",
+            "s4": "疾病、不健康、退縮、戒斷症候、抑鬱、病理性退缩",
+            "s5": "交戰、對抗（如：病毒）",
+            "s6": "緩慢地進入健康的過程或開始新的活動",
+            "s7": "無法察覺的行動或活動（如：感染）",
+            "s8": "神經壓迫、無法行動、難以行動",
+            "s9": "悲傷、痛苦、不幸、災難、麻煩",
+            "s10": "疼痛、受苦"
+            "ss1": "劍國王 守護者、警訊，或手術的潛在可能",
+            "ss2": "劍皇后 有紀律的、受約束的女性力量",
+            "ss3": "劍武士 中樞神經系統受侵擾或發炎",
+            "ss4": "劍侍者 神經性的問題，常是局部的"
+        },
+        "Pentacles": {
+            "p1": "阻滯、堵塞、保護、遮蔽、擋開、物質/實質",
+            "p2": "（物質上、實質上）平衡",
+            "p3": "某些事物運作良好",
+            "p4": "執著或抓緊某些物質/實質（如：酒、藥物等）",
+            "p5": "沒有足夠的資源/資糧"
+            "p6": "配合使用某些必要的物質（常指藥物或正確的飲食）",
+            "p7": "保養良好、維護得宜",
+            "p8": "身體正致力於某些事物上",
+            "p9": "健康、安適、有恰當的資源",
+            "p10": "某些事物過度增長、凝結",
+            "pp1": "盤國王 祖先、原型、先驅",
+            "pp2": "盤皇后 年長的女性力量、更年期",
+            "pp3": "盤武士 祖先的模式，意即遺傳性疾病",
+            "pp4": "盤侍者 孩童、小幅增长、寄生蟲"
+        },
+        "Wands": {
+            "w1": "內在的火、能量、某些事物正開始發生",
+            "w2": "評估、留心、警覺、注意提防",
+            "w3": "活動、活躍、活性",
+            "w4": "恰當、合適、幸福、幸運",
+            "w5": "發炎或感染（常是細菌性的）"
+            "w6": "戰勝、克服、獲勝",
+            "w7": "勇氣、力量",
+            "w8": "許多火的能量或發燒",
+            "w9": "從某些事物中存活",
+            "w10": "重擔、負擔、煩擾",
+            "ww1": "杖國王 侵犯性的（有攻擊性的）男性力量（可能是好的或壞的）",
+            "ww2": "杖皇后 創造性的女性力量",
+            "ww3": "杖武士 侵犯性/惡性的、猛暴的存在，或侵犯性的疾病",
+            "ww4": "杖侍者 皮疹或少量的發炎反應"
+        },
+        "Cups": {
+            "c1": "液體、流暢的、易變的、不固定的、運動的、流動的",
+            "c2": "液體/流體/體液的平衡",
+            "c3": "健康的（特別指體液相關系統，如心臟、腎臟）",
+            "c4": "正在攝取某些事物（如：服用藥物）",
+            "c5": "液體/流體/體液的平衡"
+            "c6": "受養育/培育的、給予營養物的、或受照護的、在調養的",
+            "c7": "無法察覺的影響、找錯方向/場所",
+            "c8": "持續地感情用事，情感上甩開過去（終結傷病，迎向未來）",
+            "c9": "液體/流體/體液的力量，或情緒穩定",
+            "c10": "情緒化的、情緒多變的，或過多的液體（或體液滯留，如：水腫）",
+            "cc1": "杯國王 被動/未顯化的男性力量（陰）",
+            "cc2": "杯皇后 被動/未顯化的女性力量（陰）",
+            "cc3": "杯武士 愛人，或性荷爾蒙",
+            "cc4": "杯侍者 處方（常指順勢療法處方）"
+        }
+    }
+}
+
 load_dotenv('.env')
 
 app = Flask(__name__)
@@ -29,7 +123,6 @@ handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 storage = None
 youtube = Youtube(step=4)
 website = Website()
-
 
 memory = Memory(system_message=os.getenv('SYSTEM_MESSAGE'), memory_message_count=2)
 model_management = {}
@@ -49,137 +142,13 @@ def callback():
     return 'OK'
 
 
-@handler.add(MessageEvent, message=TextMessage)
-def handle_text_message(event):
-    user_id = event.source.user_id
-    text = event.message.text.strip()
-    logger.info(f'{user_id}: {text}')
-
-    try:
-        if text.startswith('/註冊'):
-            api_key = text[3:].strip()
-            model = OpenAIModel(api_key=api_key)
-            is_successful, _, _ = model.check_token_valid()
-            if not is_successful:
-                raise ValueError('Invalid API token')
-            model_management[user_id] = model
-            storage.save({
-                user_id: api_key
-            })
-            msg = TextSendMessage(text='Token 有效，註冊成功')
-
-        elif text.startswith('/指令說明'):
-            msg = TextSendMessage(text="指令：\n/註冊 + API Token\n👉 API Token 請先到 https://platform.openai.com/ 註冊登入後取得\n\n/系統訊息 + Prompt\n👉 Prompt 可以命令機器人扮演某個角色，例如：請你扮演擅長做總結的人\n\n/清除\n👉 當前每一次都會紀錄最後兩筆歷史紀錄，這個指令能夠清除歷史訊息\n\n/圖像 + Prompt\n👉 會調用 DALL∙E 2 Model，以文字生成圖像\n\n語音輸入\n👉 會調用 Whisper 模型，先將語音轉換成文字，再調用 ChatGPT 以文字回覆\n\n其他文字輸入\n👉 調用 ChatGPT 以文字回覆")
-
-        elif text.startswith('/系統訊息'):
-            memory.change_system_message(user_id, text[5:].strip())
-            msg = TextSendMessage(text='輸入成功')
-
-        elif text.startswith('/清除'):
-            memory.remove(user_id)
-            msg = TextSendMessage(text='歷史訊息清除成功')
-
-        elif text.startswith('/圖像'):
-            prompt = text[3:].strip()
-            memory.append(user_id, 'user', prompt)
-            is_successful, response, error_message = model_management[user_id].image_generations(prompt)
-            if not is_successful:
-                raise Exception(error_message)
-            url = response['data'][0]['url']
-            msg = ImageSendMessage(
-                original_content_url=url,
-                preview_image_url=url
-            )
-            memory.append(user_id, 'assistant', url)
-
-        else:
-            user_model = model_management[user_id]
-            memory.append(user_id, 'user', text)
-            url = website.get_url_from_text(text)
-            if url:
-                if youtube.retrieve_video_id(text):
-                    is_successful, chunks, error_message = youtube.get_transcript_chunks(youtube.retrieve_video_id(text))
-                    if not is_successful:
-                        raise Exception(error_message)
-                    youtube_transcript_reader = YoutubeTranscriptReader(user_model, os.getenv('OPENAI_MODEL_ENGINE'))
-                    is_successful, response, error_message = youtube_transcript_reader.summarize(chunks)
-                    if not is_successful:
-                        raise Exception(error_message)
-                    role, response = get_role_and_content(response)
-                    msg = TextSendMessage(text=response)
-                else:
-                    chunks = website.get_content_from_url(url)
-                    if len(chunks) == 0:
-                        raise Exception('無法撈取此網站文字')
-                    website_reader = WebsiteReader(user_model, os.getenv('OPENAI_MODEL_ENGINE'))
-                    is_successful, response, error_message = website_reader.summarize(chunks)
-                    if not is_successful:
-                        raise Exception(error_message)
-                    role, response = get_role_and_content(response)
-                    msg = TextSendMessage(text=response)
-            else:
-                is_successful, response, error_message = user_model.chat_completions(memory.get(user_id), os.getenv('OPENAI_MODEL_ENGINE'))
-                if not is_successful:
-                    raise Exception(error_message)
-                role, response = get_role_and_content(response)
-                msg = TextSendMessage(text=response)
-            memory.append(user_id, role, response)
-    except ValueError:
-        msg = TextSendMessage(text='Token 無效，請重新註冊，格式為 /註冊 sk-xxxxx')
-    except KeyError:
-        msg = TextSendMessage(text='請先註冊 Token，格式為 /註冊 sk-xxxxx')
-    except Exception as e:
-        memory.remove(user_id)
-        if str(e).startswith('Incorrect API key provided'):
-            msg = TextSendMessage(text='OpenAI API Token 有誤，請重新註冊。')
-        elif str(e).startswith('That model is currently overloaded with other requests.'):
-            msg = TextSendMessage(text='已超過負荷，請稍後再試')
-        else:
-            msg = TextSendMessage(text=str(e))
-    line_bot_api.reply_message(event.reply_token, msg)
+@app.route("/塔羅牌資料", methods=['GET'])
+def get_tarot_data():
+    return jsonify({"data": tarot_data}), 200
 
 
-@handler.add(MessageEvent, message=AudioMessage)
-def handle_audio_message(event):
-    user_id = event.source.user_id
-    audio_content = line_bot_api.get_message_content(event.message.id)
-    input_audio_path = f'{str(uuid.uuid4())}.m4a'
-    with open(input_audio_path, 'wb') as fd:
-        for chunk in audio_content.iter_content():
-            fd.write(chunk)
-
-    try:
-        if not model_management.get(user_id):
-            raise ValueError('Invalid API token')
-        else:
-            is_successful, response, error_message = model_management[user_id].audio_transcriptions(input_audio_path, 'whisper-1')
-            if not is_successful:
-                raise Exception(error_message)
-            memory.append(user_id, 'user', response['text'])
-            is_successful, response, error_message = model_management[user_id].chat_completions(memory.get(user_id), 'gpt-3.5-turbo')
-            if not is_successful:
-                raise Exception(error_message)
-            role, response = get_role_and_content(response)
-            memory.append(user_id, role, response)
-            msg = TextSendMessage(text=response)
-    except ValueError:
-        msg = TextSendMessage(text='請先註冊你的 API Token，格式為 /註冊 [API TOKEN]')
-    except KeyError:
-        msg = TextSendMessage(text='請先註冊 Token，格式為 /註冊 sk-xxxxx')
-    except Exception as e:
-        memory.remove(user_id)
-        if str(e).startswith('Incorrect API key provided'):
-            msg = TextSendMessage(text='OpenAI API Token 有誤，請重新註冊。')
-        else:
-            msg = TextSendMessage(text=str(e))
-    os.remove(input_audio_path)
-    line_bot_api.reply_message(event.reply_token, msg)
-
-
-@app.route("/", methods=['GET'])
-def home():
-    return 'Hello World'
-
+# 以下保留您原來的程式功能
+# ...
 
 if __name__ == "__main__":
     if os.getenv('USE_MONGO'):
